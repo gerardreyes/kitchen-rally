@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kitchen Rally</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Layout: full-bleed 3D court; courtside flip scoreboard top-left, tools top-right, banner upper third, hint + swing bottom. */
+:root{
+  --ink:#12253a; --paper:#f3f6f8; --court:#2f6f9f; --kitchen:#245b86; --turf:#4c7a5b;
+  --ball:#d8f03c; --warn:#ff8f66; --muted:#a9bacb; --night:#0f1b2b; --glass:rgba(15,27,43,.72);
+  --display:'Barlow Condensed','Arial Narrow',Arial,sans-serif;
+  --body:'Barlow',system-ui,-apple-system,'Segoe UI',sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+html{box-sizing:border-box}
+body{
+  margin:0; background:var(--night); color:var(--paper); font-family:var(--body); font-size:15px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:0; box-sizing:border-box; overflow:hidden;
+  touch-action:none; user-select:none; -webkit-user-select:none;
+}
+#stage{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0;touch-action:none;background:var(--night)}
+#ui{position:relative;z-index:1;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding-block:12px;pointer-events:none}
+#top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+#bottom{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+
+#board{background:var(--paper);color:var(--ink);border-radius:6px;padding:8px 12px 7px;min-width:148px;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+.row{display:flex;align-items:center;gap:8px;line-height:1}
+.row + .row{margin-top:2px;border-top:1px solid rgba(18,37,58,.14);padding-top:2px}
+.row .dot{width:10px;height:10px;border-radius:50%;background:var(--ball);border:2px solid var(--ink);box-sizing:border-box;visibility:hidden}
+.row.serving .dot{visibility:visible}
+.row .name{font-family:var(--display);font-weight:600;font-size:17px;letter-spacing:.08em;text-transform:uppercase;flex:1}
+.row .pts{font-family:var(--display);font-weight:700;font-size:38px;font-variant-numeric:tabular-nums;min-width:1.4ch;text-align:right}
+#meta{margin-top:4px;font-size:11px;letter-spacing:.04em;color:#4d6178}
+
+#tools{display:flex;gap:8px;flex-wrap:wrap;pointer-events:auto}
+.btn{font:600 13px/1 var(--body);color:var(--paper);background:var(--glass);border:1px solid rgba(255,255,255,.22);border-radius:6px;padding:9px 12px;cursor:pointer}
+.btn:hover{border-color:rgba(255,255,255,.5)}
+.btn:focus-visible,.seg button:focus-visible,#swing:focus-visible{outline:2px solid var(--ball);outline-offset:2px}
+
+#banner{position:absolute;left:0;right:0;top:24%;padding-inline:max(16px,env(safe-area-inset-left,0px));text-align:center;pointer-events:none}
+#banner h2{margin:0;font-family:var(--display);font-weight:700;font-size:clamp(34px,8vw,64px);letter-spacing:.04em;text-transform:uppercase;text-shadow:0 3px 14px rgba(0,0,0,.55);text-wrap:balance}
+#banner p{margin:4px 0 0;font-size:clamp(14px,2.6vw,18px);color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.7)}
+#banner.bad h2{color:var(--warn)}
+#banner.good h2{color:var(--ball)}
+
+#hint{margin:0;max-width:34ch;font-size:13px;line-height:1.35;color:#e6eef5;text-shadow:0 1px 6px rgba(0,0,0,.8)}
+#swing{pointer-events:auto;display:none;width:92px;height:92px;border-radius:50%;border:0;cursor:pointer;background:var(--ball);color:var(--ink);font:700 24px/1 var(--display);letter-spacing:.06em;text-transform:uppercase;box-shadow:0 8px 22px rgba(0,0,0,.45);margin-bottom:max(6px,env(safe-area-inset-bottom,0px))}
+#swing:active{transform:scale(.95)}
+@media (pointer:coarse){#swing{display:block}}
+
+#intro{position:fixed;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(15,27,43,.78);padding:16px}
+#intro[hidden]{display:none}
+.card{background:var(--paper);color:var(--ink);width:100%;max-width:430px;border-radius:8px;padding:22px 22px 20px;box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:100%;overflow:auto}
+.card h1{margin:0;font-family:var(--display);font-weight:700;font-size:52px;line-height:.95;letter-spacing:.02em;text-transform:uppercase;text-wrap:balance}
+.card .lead{margin:8px 0 14px;color:#3b4f66}
+.card ul{margin:0 0 16px;padding-left:18px;display:grid;gap:5px;font-size:14px;line-height:1.35}
+.card label{display:block;font-family:var(--display);font-weight:600;font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:#4d6178;margin-bottom:6px}
+.seg{display:flex;gap:6px;margin-bottom:16px}
+.seg button{flex:1;font:600 14px/1 var(--body);padding:11px 0;border-radius:6px;border:1.5px solid var(--ink);background:transparent;color:var(--ink);cursor:pointer}
+.seg button.on{background:var(--ink);color:var(--paper)}
+#go{width:100%;font:700 24px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;padding:14px 0;border:0;border-radius:6px;background:var(--ball);color:var(--ink);cursor:pointer;box-shadow:inset 0 0 0 2px var(--ink)}
+#go:focus-visible{outline:3px solid var(--court);outline-offset:2px}
+@media (prefers-reduced-motion:no-preference){#banner{animation:rise .25s ease-out}@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}}
+</style>
+
+</head>
+<body>
+<canvas id="stage" aria-label="Pickleball court"></canvas>
+
+<div id="ui">
+  <header id="top">
+    <div id="board" aria-live="polite">
+      <div class="row" id="rowYou"><span class="dot"></span><span class="name">You</span><span class="pts" id="sYou">0</span></div>
+      <div class="row" id="rowCpu"><span class="dot"></span><span class="name">CPU</span><span class="pts" id="sCpu">0</span></div>
+      <div id="meta">First to 11, win by 2</div>
+    </div>
+    <div id="tools">
+      <button class="btn" id="btnAuto" type="button">Auto-swing: on</button>
+      <button class="btn" id="btnSound" type="button">Sound: on</button>
+    </div>
+  </header>
+  <div id="banner" hidden><h2 id="bTitle"></h2><p id="bSub"></p></div>
+  <footer id="bottom">
+    <p id="hint"></p>
+    <button id="swing" type="button">Swing</button>
+  </footer>
+</div>
+
+<div id="intro">
+  <div class="card">
+    <h1 id="introTitle">Kitchen Rally</h1>
+    <p class="lead" id="introLead">One-on-one pickleball against the CPU.</p>
+    <ul>
+      <li>Rally scoring to 11, win by 2. Whoever wins a point serves next.</li>
+      <li>Serve diagonally. The serve and the return must bounce before anyone volleys.</li>
+      <li>No volleys inside the kitchen, the 7 ft zone either side of the net.</li>
+      <li>Hit from the middle of your paddle for accuracy. Stretching wide gets sloppy.</li>
+    </ul>
+    <label id="diffLabel">Opponent</label>
+    <div class="seg" role="group" aria-labelledby="diffLabel">
+      <button type="button" data-d="easy">Easy</button>
+      <button type="button" data-d="medium" class="on">Medium</button>
+      <button type="button" data-d="hard">Hard</button>
+    </div>
+    <button id="go" type="button">Serve up</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* Scene: court, net, fences, players, ball. Units are metres. +z is toward the camera (player side). */
+const G = 9.81, R = 0.09;                      // gravity, ball radius (drawn a little large so it reads)
+const HALF_W = 3.05, HALF_L = 6.7, KITCHEN = 2.13, NET_H = 0.914, NET_HW = 3.35;
+
+const canvas = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 120);
+
+function skyTexture() {
+  const c = document.createElement('canvas'); c.width = 8; c.height = 256;
+  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#16243f'); gr.addColorStop(0.5, '#3a5273'); gr.addColorStop(0.82, '#c98874'); gr.addColorStop(1, '#efb98a');
+  g.fillStyle = gr; g.fillRect(0, 0, 8, 256);
+  return new THREE.CanvasTexture(c);
+}
+scene.background = skyTexture();
+scene.fog = new THREE.Fog(0x7c8aa0, 26, 62);
+scene.add(new THREE.HemisphereLight(0xdbe7ff, 0x3d5c49, 0.95));
+const sun = new THREE.DirectionalLight(0xffe0bd, 0.75); sun.position.set(-6, 10, 5); scene.add(sun);
+
+const mat = (c, o) => new THREE.MeshLambertMaterial(Object.assign({ color: c }, o || {}));
+
+/* Court surface drawn on a canvas: 100 px per metre, 12 m x 20 m. */
+function courtTexture() {
+  const PX = 100, W = 12 * PX, H = 20 * PX, cx = W / 2, cy = H / 2;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.fillStyle = '#4c7a5b'; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#2f6f9f'; g.fillRect(cx - HALF_W * PX, cy - HALF_L * PX, 2 * HALF_W * PX, 2 * HALF_L * PX);
+  g.fillStyle = '#245b86'; g.fillRect(cx - HALF_W * PX, cy - KITCHEN * PX, 2 * HALF_W * PX, 2 * KITCHEN * PX);
+  g.strokeStyle = '#f4f7f9'; g.lineWidth = 7;
+  g.strokeRect(cx - HALF_W * PX, cy - HALF_L * PX, 2 * HALF_W * PX, 2 * HALF_L * PX);
+  const ln = (x1, z1, x2, z2) => { g.beginPath(); g.moveTo(cx + x1 * PX, cy + z1 * PX); g.lineTo(cx + x2 * PX, cy + z2 * PX); g.stroke(); };
+  ln(-HALF_W, -KITCHEN, HALF_W, -KITCHEN); ln(-HALF_W, KITCHEN, HALF_W, KITCHEN);
+  ln(0, -HALF_L, 0, -KITCHEN); ln(0, KITCHEN, 0, HALF_L);
+  const t = new THREE.CanvasTexture(c);
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
+}
+const court = new THREE.Mesh(new THREE.PlaneGeometry(12, 20), new THREE.MeshBasicMaterial({ map: courtTexture() }));
+court.rotation.x = -Math.PI / 2; scene.add(court);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), mat(0x3a5c48));
+ground.rotation.x = -Math.PI / 2; ground.position.y = -0.03; scene.add(ground);
+
+/* Net */
+(function buildNet() {
+  const post = (x) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 1.07, 10), mat(0x20262e)); m.position.set(x, 0.535, 0); scene.add(m); };
+  post(-3.4); post(3.4);
+  const c = document.createElement('canvas'); c.width = 512; c.height = 128;
+  const g = c.getContext('2d'); g.strokeStyle = 'rgba(236,241,246,.9)'; g.lineWidth = 1.5;
+  for (let x = 0; x <= 512; x += 8) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 128); g.stroke(); }
+  for (let y = 0; y <= 128; y += 8) { g.beginPath(); g.moveTo(0, y); g.lineTo(512, y); g.stroke(); }
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(6.8, NET_H),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+  mesh.position.set(0, NET_H / 2, 0); scene.add(mesh);
+  const tape = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.07, 0.03), mat(0xf4f7f9)); tape.position.set(0, NET_H, 0); scene.add(tape);
+})();
+
+/* Fences and a few trees for the horizon */
+(function buildSurround() {
+  const fm = new THREE.MeshBasicMaterial({ color: 0x2b4a3a, transparent: true, opacity: 0.88, side: THREE.DoubleSide });
+  const side = (x) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(20, 2.4), fm); m.rotation.y = Math.PI / 2; m.position.set(x, 1.2, 0); scene.add(m); };
+  side(-6); side(6);
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(12, 2.4), fm); back.position.set(0, 1.2, -10); scene.add(back);
+  const rail = mat(0x9aa8b5);
+  [[0, -10, 12, 0.05, 0.05], [-6, 0, 0.05, 0.05, 20], [6, 0, 0.05, 0.05, 20]].forEach(([x, z, w, h, d]) => {
+    const r = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), rail); r.position.set(x, 2.4, z); scene.add(r);
+  });
+  for (let i = 0; i < 16; i++) {
+    const x = -34 + i * 4.6 + (i % 3), z = -16 - (i % 4) * 4;
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.28, 1.6, 6), mat(0x4a3a2c)); trunk.position.set(x, 0.8, z);
+    const crown = new THREE.Mesh(new THREE.ConeGeometry(1.5 + (i % 3) * 0.3, 4.6, 7), mat(i % 2 ? 0x2d5a41 : 0x356a4b)); crown.position.set(x, 3.7, z);
+    scene.add(trunk, crown);
+  }
+})();
+
+/* Blob shadows keep depth readable without shadow maps */
+function blob(r, op) {
+  const m = new THREE.Mesh(new THREE.CircleGeometry(r, 20), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: op, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.y = 0.012; return m;
+}
+
+function makePlayer(shirt, skin, cap, paddleColor) {
+  const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
+  const add = (geo, color, x, y, z) => { const m = new THREE.Mesh(geo, mat(color)); m.position.set(x, y, z); body.add(m); return m; };
+  add(new THREE.CylinderGeometry(0.15, 0.12, 0.82, 12), 0x1d2b3c, 0, 0.41, 0);
+  add(new THREE.CylinderGeometry(0.23, 0.19, 0.66, 14), shirt, 0, 1.15, 0);
+  add(new THREE.SphereGeometry(0.15, 16, 12), skin, 0, 1.65, 0);
+  add(new THREE.CylinderGeometry(0.16, 0.16, 0.06, 14), cap, 0, 1.77, -0.01);
+  add(new THREE.BoxGeometry(0.2, 0.02, 0.14), cap, 0, 1.75, -0.18);
+  const pivot = new THREE.Group(); pivot.position.set(0.27, 1.32, 0); body.add(pivot);
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5, 8), mat(skin));
+  arm.rotation.x = Math.PI / 2; arm.position.z = -0.25; pivot.add(arm);
+  const paddle = new THREE.Group(); paddle.position.z = -0.6; pivot.add(paddle);
+  const face = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.34, 0.025), mat(paddleColor)); face.position.y = 0.05; paddle.add(face);
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.14, 8), mat(0x222222)); grip.position.y = -0.19; paddle.add(grip);
+  g.add(blob(0.42, 0.3));
+  scene.add(g);
+  return { g, body, pivot };
+}
+const playerMesh = makePlayer(0xff8f66, 0xe0b08c, 0xf3f6f8, 0xff8f66);
+const aiMesh = makePlayer(0x6aa9d8, 0xc99a78, 0x12253a, 0xdfe8f0);
+aiMesh.g.rotation.y = Math.PI;
+
+/* Ball, its shadow and a short trail */
+const ballMesh = new THREE.Mesh(new THREE.SphereGeometry(R, 18, 14), new THREE.MeshLambertMaterial({ color: 0xd8f03c, emissive: 0x4a5a08 }));
+ballMesh.visible = false; scene.add(ballMesh);
+const ballShadow = blob(0.12, 0.35); ballShadow.visible = false; scene.add(ballShadow);
+const TRAIL_N = 18, trailPts = [], trailArr = new Float32Array(TRAIL_N * 3);
+const trailGeo = new THREE.BufferGeometry(); trailGeo.setAttribute('position', new THREE.BufferAttribute(trailArr, 3));
+const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0xd8f03c, transparent: true, opacity: 0.55 }));
+trail.frustumCulled = false; scene.add(trail);
+function setTrail(x, y, z, reset) {
+  if (reset) trailPts.length = 0;
+  trailPts.unshift([x, y, z]); if (trailPts.length > TRAIL_N) trailPts.pop();
+  for (let i = 0; i < TRAIL_N; i++) { const p = trailPts[Math.min(i, trailPts.length - 1)]; trailArr[i * 3] = p[0]; trailArr[i * 3 + 1] = p[1]; trailArr[i * 3 + 2] = p[2]; }
+  trailGeo.attributes.position.needsUpdate = true;
+}
+
+/* Camera framing adapts to portrait screens so the whole court stays in view */
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+function frameCamera(px) {
+  const a = camera.aspect, k = a < 1.3 ? (1.3 - a) : 0;
+  camera.position.set(px * 0.3, 5.3 + k * 3.4, 11.4 + k * 7);
+  camera.lookAt(px * 0.15, 0.6, -3.2);
+}
+window.addEventListener('resize', resize); resize(); frameCamera(0);
+
+</script>
+<script>
+/* Game logic. Player (P) stands at +z, CPU (A) at -z. Depends on scene.js globals. */
+const $ = (id) => document.getElementById(id);
+const rand = (a, b) => a + Math.random() * (b - a);
+const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 0.5;   // roughly -3..3, sd ~1
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const other = (w) => (w === 'p' ? 'a' : 'p');
+const nm = (w) => (w === 'p' ? 'Your' : "CPU's");
+const REACH = 0.9, WIN_AT = 11;
+const DIFF = {
+  easy:   { speed: 3.3, noise: 0.85, react: 0.28, err: 0.9 },
+  medium: { speed: 4.3, noise: 0.5,  react: 0.14, err: 0.45 },
+  hard:   { speed: 5.3, noise: 0.28, react: 0.06, err: 0.2 }
+};
+
+const S = { state: 'intro', score: { p: 0, a: 0 }, server: 'p', diff: 'medium', auto: true, sound: true,
+  lastHitter: null, shots: 0, bounces: { p: 0, a: 0 }, resolved: false, serveSign: 1, timer: 0, over: false };
+const ball = { x: 0, y: 1, z: 0, vx: 0, vy: 0, vz: 0, live: false };
+const P = { x: 0, z: 7, tx: 0, tz: 7, vx: 0, swingS: -1, swingWin: 0 };
+const A = { x: 0, z: -7, goalX: 0, goalZ: -6.5, swingS: -1, reactT: 0, errX: 0, errZ: 0 };
+
+/* ---------- audio ---------- */
+let actx = null;
+function sfx(kind) {
+  if (!S.sound || !actx) return;
+  try {
+    const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+    o.connect(g); g.connect(actx.destination);
+    const tone = (type, f1, f2, dur, vol) => { o.type = type; o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(f2, t + dur * 0.8); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur); o.start(t); o.stop(t + dur + 0.02); };
+    if (kind === 'hit') tone('triangle', 640, 260, 0.09, 0.32);
+    else if (kind === 'bounce') tone('sine', 190, 120, 0.07, 0.22);
+    else if (kind === 'net') tone('square', 150, 80, 0.14, 0.12);
+    else if (kind === 'win') tone('triangle', 520, 880, 0.3, 0.25);
+    else tone('triangle', 400, 200, 0.35, 0.22);
+  } catch (e) { /* audio is optional */ }
+}
+
+/* ---------- ball physics (shared by the live ball and the CPU's prediction) ---------- */
+function integ(b, dt) {
+  b.vy -= G * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
+  let bounced = false;
+  if (b.y <= R && b.vy < 0) {
+    b.y = R; const imp = -b.vy;
+    if (imp > 0.6) { b.vy = imp * 0.72; b.vx *= 0.88; b.vz *= 0.88; bounced = true; }
+    else { b.vy = 0; b.vx *= 1 - 1.5 * dt; b.vz *= 1 - 1.5 * dt; }
+  }
+  return bounced;
+}
+
+/* Solve a shot from `from` that lands at (tx, tz) and clears the net; returns launch velocity. */
+function aimShot(from, tx, tz, speed) {
+  const dx = tx - from.x, dz = tz - from.z, dist = Math.hypot(dx, dz);
+  let T = Math.max(0.42, dist / speed), v;
+  for (let i = 0; i < 40 && T <= 2.4; i++, T += 0.06) {
+    v = { vx: dx / T, vz: dz / T, vy: (R - from.y + 0.5 * G * T * T) / T };
+    const tn = -from.z / v.vz;
+    if (!(tn > 0 && tn < T)) return v;
+    if (from.y + v.vy * tn - 0.5 * G * tn * tn >= NET_H + R + 0.12) return v;
+  }
+  return v;
+}
+
+/* ---------- rules ---------- */
+const paddlePos = (who) => who === 'p' ? { x: P.x + 0.3, z: P.z - 0.45 } : { x: A.x - 0.3, z: A.z + 0.45 };
+function hitFault(who) {
+  const o = who === 'p' ? P : A;
+  if (S.shots < 3 && S.bounces[who] === 0) return 'Two-bounce rule: let it bounce first';
+  if (Math.abs(o.z) < KITCHEN && S.bounces[who] === 0) return 'Kitchen fault: no volleys in the kitchen';
+  return null;
+}
+
+function banner(title, sub, cls) {
+  $('bTitle').textContent = title; $('bSub').textContent = sub || '';
+  const b = $('banner'); b.className = cls || ''; b.hidden = false;
+  b.style.animation = 'none'; void b.offsetWidth; b.style.animation = '';
+}
+const hideBanner = () => { $('banner').hidden = true; };
+function updateHud() {
+  $('sYou').textContent = S.score.p; $('sCpu').textContent = S.score.a;
+  $('rowYou').classList.toggle('serving', S.server === 'p'); $('rowCpu').classList.toggle('serving', S.server === 'a');
+  $('meta').textContent = (S.server === 'p' ? 'You serve' : 'CPU serves') + ' · first to ' + WIN_AT + ', win by 2';
+  $('swing').textContent = (S.state === 'serve' && S.server === 'p') ? 'Serve' : 'Swing';
+}
+
+function endPoint(winner, reason) {
+  if (S.resolved) return;
+  S.resolved = true; S.state = 'point'; S.timer = 1.9;
+  S.score[winner]++; S.server = winner;
+  const w = S.score[winner], l = S.score[other(winner)];
+  S.over = w >= WIN_AT && w - l >= 2;
+  banner(winner === 'p' ? 'Point, you' : 'Point, CPU', reason, winner === 'p' ? 'good' : 'bad');
+  sfx(winner === 'p' ? 'win' : 'lose'); updateHud();
+}
+
+function onBounce(side) {
+  sfx('bounce');
+  if (S.resolved || S.state !== 'rally') return;
+  const lh = S.lastHitter, opp = other(lh);
+  const inB = Math.abs(ball.x) <= HALF_W + R && Math.abs(ball.z) <= HALF_L + R;
+  if (!inB) return endPoint(opp, nm(lh) + ' shot landed out');
+  if (side === lh) return endPoint(opp, nm(lh) + " shot didn't clear the net");
+  if (S.shots === 1 && (Math.abs(ball.z) < KITCHEN || ball.x * S.serveSign < -R)) return endPoint(opp, 'Serve fault: it must land in the far diagonal box');
+  S.bounces[side]++;
+  if (S.bounces[side] >= 2) endPoint(lh, (side === 'p' ? 'You' : 'The CPU') + ' let it bounce twice');
+}
+
+function physics(dt) {
+  const pz = ball.z;
+  const bounced = integ(ball, dt);
+  if (!S.resolved && S.state === 'rally' && ((pz > 0 && ball.z <= 0) || (pz < 0 && ball.z >= 0)) && Math.abs(ball.x) < NET_HW && ball.y < NET_H + R * 0.5) {
+    ball.z = pz; ball.vz *= -0.15; ball.vx *= 0.4; sfx('net');
+    endPoint(other(S.lastHitter), nm(S.lastHitter) + ' shot hit the net');
+  }
+  if (bounced) onBounce(ball.z > 0 ? 'p' : 'a');
+  if (!S.resolved && S.state === 'rally' && (Math.abs(ball.z) > 16 || Math.abs(ball.x) > 14)) endPoint(other(S.lastHitter), nm(S.lastHitter) + ' shot landed out');
+}
+
+/* ---------- hitting ---------- */
+function startSwing(who) { const o = who === 'p' ? P : A; if (o.swingS < 0) o.swingS = 0; }
+function afterHit(who) {
+  S.lastHitter = who; S.shots++; S.bounces.p = 0; S.bounces.a = 0; sfx('hit'); startSwing(who);
+  const D = DIFF[S.diff];
+  if (who === 'p') { A.errX = gauss() * D.err * 0.5; A.errZ = gauss() * D.err * 0.35; A.reactT = D.react * rand(0.6, 1.4); predictAI(); }
+  else { A.goalX = -P.x * 0.4; A.goalZ = S.shots >= 2 ? -3.3 : -6.6; }
+}
+function launch(v) { ball.vx = v.vx; ball.vy = v.vy; ball.vz = v.vz; }
+function aimBias() { return (keyX() || (Math.abs(P.vx) > 1.3 ? Math.sign(P.vx) : 0)); }
+
+function playerShot(stretch) {
+  let tx = aimBias() ? aimBias() * rand(1.7, 2.6) : (A.x > 0 ? -1 : 1) * rand(1.0, 2.3), tz, sp;
+  if (Math.abs(P.z) < 2.6) { tz = -rand(0.9, 1.9); sp = 4.6; }          // dink
+  else if (ball.y > 1.1) { tz = -rand(3.5, 5.6); sp = 12.5; }           // put-away
+  else if (P.z < 4.8) { tz = -rand(1.0, 2.0); sp = 5.6; }               // third-shot drop
+  else { tz = -rand(4.2, 6.0); sp = 10; }                               // drive
+  const sig = 0.12 + 0.55 * stretch * stretch;
+  launch(aimShot(ball, tx + gauss() * sig, tz + gauss() * sig * 1.1, sp));
+}
+function aiShot(stretch) {
+  const D = DIFF[S.diff]; let tx = (P.x > 0 ? -1 : 1) * rand(1.0, 2.4), tz, sp;
+  if (Math.abs(A.z) < KITCHEN + 0.5) { tz = rand(0.9, 1.9); sp = 4.6; }
+  else if (ball.y > 1.1) { tz = rand(3.4, 5.6); sp = 12; }
+  else if (A.z > -4.8 || Math.random() < 0.45) { tz = rand(1.0, 2.0); sp = 5.6; }
+  else { tz = rand(4.2, 6.0); sp = 10; }
+  const sig = D.noise * (0.6 + 0.6 * stretch * stretch);
+  launch(aimShot(ball, tx + gauss() * sig, tz + gauss() * sig * 1.1, sp));
+}
+
+function tryHit(who) {
+  if (S.state !== 'rally' || S.resolved || S.lastHitter === who) return false;
+  if (who === 'p' ? ball.z < -0.2 : ball.z > 0.2) return false;
+  if (ball.y < 0.05 || ball.y > 1.8) return false;
+  const pos = paddlePos(who), d = Math.hypot(ball.x - pos.x, ball.z - pos.z, 0.5 * (ball.y - 0.95));
+  if (d > REACH) return false;
+  const f = hitFault(who);
+  if (f) { startSwing(who); endPoint(other(who), (who === 'p' ? 'You' : 'CPU') + ' — ' + f); return true; }
+  if (who === 'p') playerShot(d / REACH); else aiShot(d / REACH);
+  afterHit(who); return true;
+}
+
+function doServe(who) {
+  const o = who === 'p' ? P : A, pos = paddlePos(who), D = DIFF[S.diff];
+  ball.x = pos.x; ball.z = pos.z; ball.y = 1.0;
+  let tx = -Math.sign(o.x) * rand(0.6, 2.7), tz = who === 'p' ? -rand(3.2, 6.1) : rand(3.2, 6.1);
+  if (who === 'a') { tx += gauss() * D.noise * 0.45; tz += gauss() * D.noise * 0.5; }
+  launch(aimShot(ball, tx, tz, 8.5));
+  ball.live = true; S.state = 'rally'; S.shots = 0; S.serveSign = -Math.sign(o.x);
+  setTrail(ball.x, ball.y, ball.z, true); hideBanner(); afterHit(who); updateHud();
+}
+
+/* ---------- CPU ---------- */
+function predictAI() {
+  const b = { x: ball.x, y: ball.y, z: ball.z, vx: ball.vx, vy: ball.vy, vz: ball.vz };
+  let bn = S.bounces.a, best = null, firstLand = null;
+  for (let i = 0; i < 420 && !best; i++) {
+    if (integ(b, 1 / 120)) { if (b.z < 0) { bn++; if (!firstLand) firstLand = { x: b.x, z: b.z }; } }
+    if (b.z > -0.35) continue;
+    const legalBounce = bn >= 1, volleyOk = S.shots >= 3 && Math.abs(b.z) >= KITCHEN + 0.3;
+    if (legalBounce && b.vy <= 0 && b.y >= 0.25 && b.y <= 1.2) best = { x: b.x, z: b.z };
+    else if (!legalBounce && volleyOk && b.y >= 0.45 && b.y <= 1.5) best = { x: b.x, z: b.z };
+  }
+  const t = best || firstLand || { x: 0, z: -4 };
+  A.goalX = clamp(t.x + 0.3 + A.errX, -3.6, 3.6); A.goalZ = clamp(t.z - 0.45 + A.errZ, -8.3, -0.5);
+}
+function updateAI(dt) {
+  if (A.swingS >= 0) { A.swingS += dt / 0.28; if (A.swingS >= 1) A.swingS = -1; }
+  if (S.state === 'intro') return;
+  if (A.reactT > 0) A.reactT -= dt;
+  else {
+    const dx = A.goalX - A.x, dz = A.goalZ - A.z, d = Math.hypot(dx, dz), step = DIFF[S.diff].speed * dt;
+    if (d > 1e-4) { const k = Math.min(1, step / d); A.x += dx * k; A.z += dz * k; }
+  }
+  A.x = clamp(A.x, -3.7, 3.7); A.z = clamp(A.z, -8.4, -0.4);
+  if (S.state === 'rally' && S.lastHitter === 'p' && !S.resolved && !hitFault('a')) tryHit('a');
+}
+
+/* ---------- player and input ---------- */
+const keys = {};
+const keyX = () => ((keys.KeyD || keys.ArrowRight) ? 1 : 0) - ((keys.KeyA || keys.ArrowLeft) ? 1 : 0);
+const keyZ = () => ((keys.KeyS || keys.ArrowDown) ? 1 : 0) - ((keys.KeyW || keys.ArrowUp) ? 1 : 0);
+const running = () => S.state !== 'intro' && S.state !== 'over';
+const lockedServe = () => S.state === 'serve' && S.server === 'p';
+function setTarget(x, z) { P.tx = clamp(x, -3.7, 3.7); P.tz = clamp(z, 0.4, 8.4); }
+
+function swingAction() {
+  if (S.state === 'serve' && S.server === 'p') return doServe('p');
+  if (S.state === 'rally') { startSwing('p'); P.swingWin = 0.26; }
+}
+function updatePlayer(dt) {
+  if (P.swingS >= 0) { P.swingS += dt / 0.28; if (P.swingS >= 1) P.swingS = -1; }
+  const px = P.x;
+  if (running() && !lockedServe()) {
+    const kx = keyX(), kz = keyZ();
+    if (kx || kz) {
+      const n = Math.hypot(kx, kz) || 1;
+      P.x = clamp(P.x + kx / n * 5.8 * dt, -3.7, 3.7); P.z = clamp(P.z + kz / n * 5.8 * dt, 0.4, 8.4); P.tx = P.x; P.tz = P.z;
+    } else {
+      const dx = P.tx - P.x, dz = P.tz - P.z, d = Math.hypot(dx, dz);
+      if (d > 1e-4) { const k = Math.min(1, 5.8 * dt / d); P.x += dx * k; P.z += dz * k; }
+    }
+  }
+  P.vx += ((P.x - px) / Math.max(dt, 1e-3) - P.vx) * Math.min(1, dt * 8);
+  if (S.state === 'rally' && !S.resolved) {
+    if (P.swingWin > 0) { P.swingWin -= dt; tryHit('p'); }
+    else if (S.auto && S.lastHitter !== 'p' && !hitFault('p')) tryHit('p');
+  }
+}
+
+/* pointer: mouse follows the cursor and clicks to swing; touch drags relatively and taps to swing */
+const ray = new THREE.Raycaster(), gplane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), v2 = new THREE.Vector2(), hv = new THREE.Vector3();
+function groundAt(e) {
+  const r = canvas.getBoundingClientRect();
+  v2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(v2, camera);
+  return ray.ray.intersectPlane(gplane, hv) ? hv.clone() : null;
+}
+let ptr = null;
+canvas.addEventListener('pointerdown', (e) => {
+  if (!running()) return;
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+  if (e.pointerType === 'mouse') swingAction();
+  else ptr = { id: e.pointerId, t: performance.now(), x: e.clientX, y: e.clientY, moved: 0, g: groundAt(e) };
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!running()) return;
+  if (e.pointerType === 'mouse') { if (!lockedServe()) { const g = groundAt(e); if (g) setTarget(g.x, g.z); } return; }
+  if (!ptr || e.pointerId !== ptr.id) return;
+  const g = groundAt(e);
+  if (g && ptr.g && !lockedServe()) setTarget(P.tx + (g.x - ptr.g.x), P.tz + (g.z - ptr.g.z));
+  if (g) ptr.g = g;
+  ptr.moved += Math.hypot(e.clientX - ptr.x, e.clientY - ptr.y); ptr.x = e.clientX; ptr.y = e.clientY;
+});
+const endPtr = (e) => { if (ptr && e.pointerId === ptr.id) { if (performance.now() - ptr.t < 220 && ptr.moved < 12) swingAction(); ptr = null; } };
+canvas.addEventListener('pointerup', endPtr); canvas.addEventListener('pointercancel', () => { ptr = null; });
+window.addEventListener('keydown', (e) => {
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code) && running()) e.preventDefault();
+  if (e.repeat) return;
+  keys[e.code] = true;
+  if ((e.code === 'Space' || e.code === 'Enter') && running()) swingAction();
+});
+window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+/* ---------- flow ---------- */
+function startServe() {
+  S.state = 'serve'; S.resolved = false; S.lastHitter = null; S.shots = 0; S.bounces = { p: 0, a: 0 }; S.timer = 1.3;
+  ball.live = false; setTrail(0, 0, 0, true);
+  const right = S.score[S.server] % 2 === 0;
+  if (S.server === 'p') { P.x = P.tx = right ? 1.5 : -1.5; P.z = P.tz = 7.1; A.x = A.goalX = -P.x; A.z = A.goalZ = -7.0; }
+  else { A.x = A.goalX = right ? -1.5 : 1.5; A.z = A.goalZ = -7.1; P.x = P.tx = -A.x; P.z = P.tz = 7.0; }
+  updateHud();
+  if (S.server === 'p') banner('Your serve', coarse ? 'Tap Serve' : 'Click or press Space to serve', '');
+  else banner('CPU serves', 'Let it bounce, then return it', '');
+}
+function showEnd() {
+  S.state = 'over';
+  $('introTitle').textContent = S.score.p > S.score.a ? 'You win' : 'CPU wins';
+  $('introLead').textContent = 'Final score ' + S.score.p + ' to ' + S.score.a + '. Same opponent or change the level?';
+  $('go').textContent = 'Play again'; $('intro').hidden = false; hideBanner();
+}
+function newMatch() {
+  S.score = { p: 0, a: 0 }; S.server = 'p'; S.over = false; $('intro').hidden = true; startServe();
+}
+
+function update(dt) {
+  updatePlayer(dt); updateAI(dt);
+  if (ball.live) { const n = Math.ceil(dt / (1 / 240)); for (let i = 0; i < n; i++) physics(dt / n); setTrail(ball.x, ball.y, ball.z, false); }
+  if (S.state === 'serve' && S.server === 'a') { S.timer -= dt; if (S.timer <= 0) doServe('a'); }
+  else if (S.state === 'point') {
+    S.timer -= dt;
+    A.goalX = 0; A.goalZ = -6.5;
+    if (S.timer <= 0) { if (S.over) showEnd(); else startServe(); }
+  }
+}
+
+function render(now) {
+  playerMesh.g.position.set(P.x, 0, P.z); aiMesh.g.position.set(A.x, 0, A.z);
+  const sw = (s) => (s < 0 ? -0.15 : -0.15 + 1.15 * Math.sin(Math.PI * s));
+  playerMesh.pivot.rotation.y = sw(P.swingS); aiMesh.pivot.rotation.y = sw(A.swingS);
+  playerMesh.body.rotation.z = -clamp(P.vx, -5, 5) * 0.015;
+  const held = S.state === 'serve';
+  if (held) { const pp = paddlePos(S.server); ball.x = pp.x; ball.z = pp.z; ball.y = 1.0 + Math.sin(now / 260) * 0.03; }
+  ballMesh.visible = ballShadow.visible = trail.visible = (ball.live || held) && S.state !== 'intro';
+  trail.visible = ball.live;
+  ballMesh.position.set(ball.x, ball.y, ball.z);
+  ballShadow.position.set(ball.x, 0.012, ball.z); ballShadow.scale.setScalar(1 / (1 + ball.y * 0.7));
+  frameCamera(P.x); renderer.render(scene, camera);
+}
+
+const coarse = window.matchMedia && window.matchMedia('(pointer:coarse)').matches;
+$('hint').textContent = coarse ? 'Drag to move. Tap Swing to hit; Auto-swing hits for you when the ball is in reach.'
+  : 'Move with the mouse or WASD. Click or Space to swing. Hold left or right as you hit to aim.';
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  update(dt); render(now); requestAnimationFrame(frame);
+}
+
+/* ---------- menu wiring ---------- */
+document.querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('.seg button').forEach((x) => x.classList.toggle('on', x === b)); S.diff = b.dataset.d; b.blur();
+}));
+$('go').addEventListener('click', () => {
+  try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) { actx = null; }
+  $('go').blur(); newMatch();
+});
+$('btnAuto').addEventListener('click', (e) => { S.auto = !S.auto; e.currentTarget.textContent = 'Auto-swing: ' + (S.auto ? 'on' : 'off'); e.currentTarget.blur(); });
+$('btnSound').addEventListener('click', (e) => { S.sound = !S.sound; e.currentTarget.textContent = 'Sound: ' + (S.sound ? 'on' : 'off'); e.currentTarget.blur(); });
+$('swing').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); if (running()) swingAction(); });
+updateHud(); requestAnimationFrame(frame);
+
+</script>
+</body>
+</html>
